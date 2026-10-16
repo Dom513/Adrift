@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T-MINUS // IMPACT VECTOR</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --amber: #4A9EFF;
+  --red: #FF3B30;
+  --dim: rgba(74,158,255,0.15);
+  --border: rgba(74,158,255,0.28);
+  --muted: rgba(74,158,255,0.45);
+  --text: rgba(74,158,255,0.92);
+  --bright: #A8D4FF;
+}
+
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+body {
+  background: #000;
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  position: relative;
+}
+
+canvas#sun-canvas {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 0;
+}
+
+.scanlines {
+  position: fixed; inset: 0; z-index: 3; pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px
+  );
+}
+
+#flash-overlay {
+  position: fixed; inset: 0; z-index: 4; pointer-events: none;
+  background: rgba(255,30,0,0);
+}
+
+.hud {
+  position: relative; z-index: 5;
+  width: min(1010px, 96vw);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0;
+}
+
+.top-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+  position: relative;
+}
+.top-left, .top-right { display: flex; flex-direction: column; gap: 4px; }
+.top-right { align-items: flex-end; }
+.label-tiny {
+  font-size: 9px; letter-spacing: 0.45em;
+  text-transform: uppercase; color: var(--muted);
+}
+.value-small {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px; letter-spacing: 0.2em; color: var(--text);
+}
+.top-title {
+  text-align: center;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 10px; font-weight: 500;
+  letter-spacing: 0.6em; text-transform: uppercase;
+  color: var(--muted); padding: 0 1rem;
+}
+
+.corner {
+  position: absolute; width: 14px; height: 14px;
+  border-color: var(--border); border-style: solid;
+}
+.corner-tl { top: 0; left: 0; border-width: 1px 0 0 1px; }
+.corner-tr { top: 0; right: 0; border-width: 1px 1px 0 0; }
+.corner-bl { bottom: 0; left: 0; border-width: 0 0 1px 1px; }
+.corner-br { bottom: 0; right: 0; border-width: 0 1px 1px 0; }
+
+.mid {
+  display: grid;
+  grid-template-columns: 180px 650px 180px;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  min-height: 240px;
+}
+
+.side-panel {
+  padding: 20px 16px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.left-panel  { border-right: 1px solid var(--border); }
+.right-panel { border-left: 1px solid var(--border); }
+
+.panel-block { display: flex; flex-direction: column; gap: 5px; }
+.panel-label { font-size: 8px; letter-spacing: 0.45em; text-transform: uppercase; color: var(--muted); }
+.panel-value { font-family: 'Orbitron', sans-serif; font-size: 13px; letter-spacing: 0.1em; color: var(--text); }
+.bar-track { height: 3px; background: var(--dim); border-radius: 2px; margin-top: 3px; }
+.bar-fill { height: 100%; border-radius: 2px; background: var(--amber); transition: width 1s linear, background 1s; }
+
+.centre {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px 12px; gap: 6px;
+}
+
+.impact-label {
+  font-size: 9px; letter-spacing: 0.55em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+}
+
+.time-display {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(60px, 13vw, 108px);
+  font-weight: 900; letter-spacing: 0.06em;
+  color: var(--bright); font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 0 0 50px rgba(74,158,255,0.25), 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 0 12px rgba(0,0,0,0.9), 0 0 30px rgba(0,0,0,0.7);
+  transition: color 1.2s, text-shadow 1.2s;
+  /* fixed width so layout never shifts as digits change */
+  display: block;
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.sublabel {
+  font-size: 10px; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--muted);
+  margin-top: 6px; transition: color 1s;
+}
+
+.tick-row { display: flex; gap: 5px; margin-top: 8px; }
+.tick { width: 3px; height: 10px; background: var(--dim); border-radius: 1px; transition: background 0.4s; }
+.tick.active { background: var(--amber); }
+
+.status-msg {
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--muted); min-height: 15px; text-align: center; margin-top: 4px;
+}
+
+.bottom-bar {
+  border-top: 1px solid var(--border);
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; padding: 12px 0 10px; gap: 12px;
+  position: relative;
+}
+
+.controls { display: flex; gap: 10px; }
+
+button {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 9px; font-weight: 500;
+  letter-spacing: 0.3em; text-transform: uppercase;
+  padding: 10px 22px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.5);
+  color: var(--text);
+  cursor: pointer; transition: all 0.15s;
+  clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+}
+#btn-start { border-color: rgba(74,158,255,0.55); color: var(--bright); box-shadow: 0 0 18px rgba(74,158,255,0.12); }
+#btn-start:hover { background: rgba(74,158,255,0.1); box-shadow: 0 0 28px rgba(74,158,255,0.25); }
+button:hover { opacity: 0.85; }
+button:active { transform: scale(0.97); }
+
+.bottom-left, .bottom-right { display: flex; flex-direction: column; gap: 4px; }
+.bottom-right { align-items: flex-end; }
+
+@keyframes warnFlash {
+  0%,100% { background: rgba(255,30,0,0); }
+  50%      { background: rgba(255,30,0,0.13); }
+}
+
+/* Settings icon */
+#settings-btn {
+  position: fixed; top: 12px; right: 14px; z-index: 30;
+  width: 28px; height: 28px;
+  background: none; border: none; padding: 0;
+  cursor: pointer; opacity: 0.35;
+  transition: opacity 0.2s;
+  clip-path: none;
+  letter-spacing: 0;
+}
+#settings-btn:hover { opacity: 0.75; }
+#settings-btn svg { width: 18px; height: 18px; display: block; margin: auto; }
+
+/* DEV PANEL */
+#dev-panel {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+  background: rgba(0,0,0,0.9); border-top: 1px solid rgba(74,158,255,0.4);
+  padding: 10px 24px 14px;
+  display: none; flex-direction: column; gap: 10px;
+  backdrop-filter: blur(8px);
+}
+#dev-panel.visible { display: flex; }
+.dev-row { display: flex; align-items: center; gap: 14px; }
+.dev-label { font-size: 9px; letter-spacing: 0.35em; text-transform: uppercase; color: rgba(74,158,255,0.5); white-space: nowrap; min-width: 110px; }
+.dev-value { font-family: 'Orbitron', sans-serif; font-size: 11px; color: rgba(74,158,255,0.85); min-width: 80px; }
+#scrubber {
+  flex: 1; -webkit-appearance: none;
+  height: 3px; background: rgba(74,158,255,0.2); border-radius: 2px; outline: none; cursor: pointer;
+}
+#scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: #4A9EFF;
+  box-shadow: 0 0 8px rgba(74,158,255,0.6); cursor: pointer;
+}
+.dev-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.dev-badge {
+  font-size: 8px; letter-spacing: 0.3em; padding: 4px 12px;
+  border: 1px solid rgba(74,158,255,0.25); color: rgba(74,158,255,0.55);
+  text-transform: uppercase; cursor: pointer; font-family: 'Share Tech Mono', monospace;
+}
+.dev-badge:hover { border-color: rgba(74,158,255,0.6); color: rgba(74,158,255,0.95); }
+
+/* WELCOME POPUP */
+#welcome-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(0,0,0,0.86);
+  backdrop-filter: blur(6px);
+}
+#welcome-overlay.hidden { display: none; }
+.welcome-box {
+  position: relative; width: min(760px, 100%); max-height: 96vh; overflow-y: auto;
+  border: 1px solid var(--border); background: rgba(0,8,20,0.96);
+  padding: 26px 28px 26px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px;
+  box-shadow: 0 0 60px rgba(74,158,255,0.15);
+}
+.welcome-box h2 {
+  font-family: 'Orbitron', sans-serif; font-size: clamp(16px, 3.6vw, 22px);
+  font-weight: 700; letter-spacing: 0.18em; color: var(--bright);
+}
+.welcome-box p { font-size: 13px; line-height: 1.7; letter-spacing: 0.04em; color: var(--text); max-width: 62ch; margin: 0 auto; }
+.video-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--border); background: #000; }
+.video-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+#welcome-x {
+  position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; padding: 0;
+  font-size: 18px; line-height: 1; letter-spacing: 0; clip-path: none; border: 1px solid var(--border);
+}
+.video-fallback { font-size: 11px; letter-spacing: 0.12em; color: var(--muted); text-decoration: underline; }
+.video-fallback:hover { color: var(--bright); }
+#welcome-go { align-self: center; border-color: rgba(74,158,255,0.55); color: var(--bright); box-shadow: 0 0 18px rgba(74,158,255,0.12); }
+</style>
+</head>
+<body>
+
+<canvas id="sun-canvas"></canvas>
+<div class="scanlines"></div>
+<div id="flash-overlay"></div>
+
+<button id="settings-btn" onclick="toggleDev()" title="Dev tools">
+  <svg viewBox="0 0 24 24" fill="none" stroke="rgba(74,158,255,0.9)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+  </svg>
+</button>
+
+<div class="hud">
+  <div class="top-bar">
+    <div class="corner corner-tl"></div>
+    <div class="corner corner-tr"></div>
+    <div class="top-left">
+      <div class="label-tiny">Vessel ID</div>
+      <div class="value-small">HSV-ARIES-07</div>
+    </div>
+    <div class="top-title">Impact Vector // Solar Approach</div>
+    <div class="top-right">
+      <div class="label-tiny">System Status</div>
+      <div class="value-small" id="sys-status">NOMINAL</div>
+    </div>
+  </div>
+
+  <div class="mid">
+    <div class="side-panel left-panel">
+      <div class="panel-block">
+        <div class="panel-label">Solar Distance</div>
+        <div class="panel-value" id="distance">0.720 AU</div>
+        <div class="bar-track"><div class="bar-fill" id="dist-bar" style="width:100%"></div></div>
+      </div>
+      <div class="panel-block">
+        <div class="panel-label">Hull Temp</div>
+        <div class="panel-value" id="hull-temp">1,420 K</div>
+        <div class="bar-track"><div class="bar-fill" id="temp-bar" style="width:1%"></div></div>
+      </div>
+      <div class="panel-block">
+        <div class="panel-label">Shield Integrity</div>
+        <div class="panel-value" id="shield">100%</div>
+        <div class="bar-track"><div class="bar-fill" id="shield-bar" style="width:100%"></div></div>
+      </div>
+      <div class="panel-block">
+        <div class="panel-label">Approach Angle</div>
+        <div class="panel-value" id="vector">0.004°</div>
+      </div>
+    </div>
+
+    <div class="centre">
+      <div class="impact-label">— Time to Impact —</div>
+      <div class="time-display" id="disp">01:00:00</div>
+      <div class="sublabel" id="sublabel">Awaiting launch command</div>
+      <div class="tick-row" id="tick-row"></div>
+      <div class="status-msg" id="msg"></div>
+    </div>
+
+    <div class="side-panel right-panel">
+      <div class="panel-block">
+        <div class="panel-label">Radiation Flux</div>
+        <div class="panel-value" id="rad-flux">1.04 kW/m²</div>
+        <div class="bar-track"><div class="bar-fill" id="flux-bar" style="width:1%"></div></div>
+      </div>
+      <div class="panel-block">
+        <div class="panel-label">Surface Temp</div>
+        <div class="panel-value" id="surf-temp">5,778 K</div>
+      </div>
+      <div class="panel-block">
+        <div class="panel-label">Solar Wind</div>
+        <div class="panel-value" id="sol-wind">450 km/s</div>
+        <div class="bar-track"><div class="bar-fill" id="wind-bar" style="width:3%"></div></div>
+      </div>
+      <div class="panel-block">
+        <div class="panel-label">Mission Phase</div>
+        <div class="panel-value" id="phase">TRANSIT</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="corner corner-bl"></div>
+    <div class="corner corner-br"></div>
+    <div class="bottom-left">
+      <div class="label-tiny">Trajectory</div>
+      <div class="value-small">SOL DIRECT</div>
+    </div>
+    <div class="controls">
+      <button id="btn-start" onclick="toggle()">Initiate</button>
+      <button onclick="reset()">Reset</button>
+    </div>
+    <div class="bottom-right">
+      <div class="label-tiny">Alert Level</div>
+      <div class="value-small" id="alert-level">GREEN</div>
+    </div>
+  </div>
+</div>
+
+<div id="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+  <div class="welcome-box">
+    <button id="welcome-x" onclick="closeWelcome()" aria-label="Close briefing">&times;</button>
+    <h2 id="welcome-title">Welcome aboard, crew of HSV-ARIES-07</h2>
+    <p>Your vessel is on a direct course for the sun. You have sixty minutes to solve every puzzle and escape before impact. Watch the briefing below, then close this window to start the countdown.</p>
+    <div class="video-wrap">
+      <iframe id="welcome-video"
+        src="https://www.youtube.com/embed/F_f-TMJ29w8?rel=0&modestbranding=1"
+        title="Mission briefing"
+        allow="accelerometer; encrypted-media; picture-in-picture; fullscreen"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen></iframe>
+    </div>
+    <a class="video-fallback" href="https://youtu.be/F_f-TMJ29w8" target="_blank" rel="noopener">Video not loading? Watch it on YouTube</a>
+    <button id="welcome-go" onclick="closeWelcome()">Start countdown</button>
+  </div>
+</div>
+
+<div id="dev-panel">
+  <div class="dev-row">
+    <div class="dev-label">DEV // Timeline</div>
+    <input type="range" id="scrubber" min="0" max="3600" value="3600" step="1">
+    <div class="dev-value" id="scrubber-time">01:00:00</div>
+  </div>
+  <div class="dev-row">
+    <div class="dev-label">Jump to</div>
+    <div class="dev-badges">
+      <div class="dev-badge" onclick="scrubTo(3600)">T-60:00</div>
+      <div class="dev-badge" onclick="scrubTo(2700)">T-45:00</div>
+      <div class="dev-badge" onclick="scrubTo(1800)">T-30:00</div>
+      <div class="dev-badge" onclick="scrubTo(601)">T-10:01</div>
+      <div class="dev-badge" onclick="scrubTo(599)">⚠ T-09:59</div>
+      <div class="dev-badge" onclick="scrubTo(300)">T-05:00</div>
+      <div class="dev-badge" onclick="scrubTo(60)">T-01:00</div>
+      <div class="dev-badge" onclick="scrubTo(10)">T-00:10</div>
+      <div class="dev-badge" onclick="scrubTo(1)">T-00:01</div>
+      <div class="dev-badge" onclick="scrubTo(0)">T-ZERO</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOTAL  = 3600;
+const WARN_AT = 600;
+let remaining = TOTAL, running = false, iv = null, flashAnim = null;
+
+// Dev panel toggle
+let devOpen = false;
+function toggleDev() {
+  devOpen = !devOpen;
+  const panel = document.getElementById('dev-panel');
+  panel.classList.toggle('visible', devOpen);
+}
+
+// Always wire up the scrubber
+document.getElementById('scrubber').addEventListener('input', function() {
+  if (running) { clearInterval(iv); iv = null; running = false; document.getElementById('btn-start').textContent = 'Initiate'; }
+  scrubTo(parseInt(this.value));
+});
+
+function scrubTo(val) {
+  remaining = Math.max(0, Math.min(TOTAL, val));
+  document.getElementById('scrubber').value = remaining;
+  document.getElementById('scrubber-time').textContent = fmt(remaining);
+  renderState();
+}
+
+const disp     = document.getElementById('disp');
+const sublabel = document.getElementById('sublabel');
+const msg      = document.getElementById('msg');
+const btnStart = document.getElementById('btn-start');
+const flashOv  = document.getElementById('flash-overlay');
+const tickRow  = document.getElementById('tick-row');
+
+const TICK_COUNT = 24;
+for (let i = 0; i < TICK_COUNT; i++) {
+  const el = document.createElement('div'); el.className = 'tick'; tickRow.appendChild(el);
+}
+
+function fmt(s) {
+  return pad(Math.floor(s/3600)) + ':' + pad(Math.floor((s%3600)/60)) + ':' + pad(s%60);
+}
+function pad(n) { return String(n).padStart(2,'0'); }
+function progress() { return 1 - (remaining / TOTAL); }
+function lerp(a,b,t) { return a + (b-a)*t; }
+function clamp(v,a,b) { return Math.max(a, Math.min(b, v)); }
+function easeIn(t, e=2) { return Math.pow(clamp(t,0,1), e); }
+
+function toggle() {
+  if (remaining === 0) return;
+  running = !running;
+  if (running) {
+    btnStart.textContent = 'Pause';
+    sublabel.textContent = 'Impact trajectory locked';
+    iv = setInterval(tick, 1000);
+  } else {
+    btnStart.textContent = 'Resume';
+    sublabel.textContent = 'Trajectory hold';
+    clearInterval(iv); iv = null;
+  }
+}
+
+const MILESTONES = {
+  2700: 'Solar wind density increasing',
+  1800: 'Thermal shielding at 60% capacity',
+  900:  'Hull temperature rising — brace stations',
+  600:  '\u26a0 WARNING \u2014 10 minutes to impact',
+  300:  'Shield integrity critical \u2014 5 minutes',
+  60:   '\u2014 BRACE FOR IMPACT \u2014',
+};
+
+function tick() {
+  remaining--;
+  document.getElementById('scrubber').value = remaining;
+  document.getElementById('scrubber-time').textContent = fmt(remaining);
+  if (MILESTONES[remaining]) msg.textContent = MILESTONES[remaining];
+  if (remaining === 0) {
+    clearInterval(iv); iv = null; running = false;
+    btnStart.textContent = 'Initiate';
+    sublabel.textContent = 'Impact event';
+    msg.textContent = 'T-ZERO  //  SOLAR IMPACT CONFIRMED';
+  }
+  renderState();
+}
+
+function reset() {
+  clearInterval(iv); iv = null; running = false; remaining = TOTAL;
+  btnStart.textContent = 'Initiate';
+  sublabel.textContent = 'Awaiting launch command';
+  msg.textContent = '';
+  document.getElementById('scrubber').value = TOTAL;
+  document.getElementById('scrubber-time').textContent = fmt(TOTAL);
+  renderState();
+}
+
+function renderState() {
+  const p = progress();
+  disp.textContent = fmt(remaining);
+
+  const outline = '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 0 14px rgba(0,0,0,0.95)';
+  const tc   = `rgba(168,212,255,${0.75 + easeIn(progress(),1)*0.25})`;
+  const glow = `0 0 50px rgba(74,158,255,${0.25 + easeIn(progress(),1)*0.35}), ${outline}`;
+  disp.style.color      = tc;
+  disp.style.textShadow = glow;
+
+  // warning / impact state
+  if (remaining === 0) {
+    flashOv.style.animation = 'warnFlash 0.35s ease-in-out infinite';
+    flashAnim = true;
+    document.getElementById('sys-status').textContent  = 'IMPACT';
+    document.getElementById('alert-level').textContent = 'IMPACT';
+  } else if (remaining <= WARN_AT) {
+    if (!flashAnim) { flashOv.style.animation = 'warnFlash 1.1s ease-in-out infinite'; flashAnim = true; }
+    document.getElementById('sys-status').textContent  = 'WARNING';
+    document.getElementById('alert-level').textContent = 'RED';
+  } else {
+    flashOv.style.animation = 'none';
+    flashAnim = null;
+    document.getElementById('sys-status').textContent  = 'NOMINAL';
+    document.getElementById('alert-level').textContent = 'GREEN';
+  }
+
+  // ticks
+  const active = Math.round(p * TICK_COUNT);
+  document.querySelectorAll('.tick').forEach((t,i) => t.classList.toggle('active', i < active));
+
+  // side panels
+  const distAU   = Math.max(0, 0.720 - 0.720 * easeIn(p, 1.8));
+  const hullTemp = Math.round(1420 + easeIn(p, 2.2) * 13580);
+  const shield   = Math.max(0, Math.round(100 - easeIn(p, 1.4) * 100));
+  const flux     = 1.04 + easeIn(p, 2) * 98960;
+  const windSpd  = Math.round(450 + easeIn(p, 1.6) * 1600);
+
+  document.getElementById('distance').textContent  = distAU.toFixed(3) + ' AU';
+  document.getElementById('hull-temp').textContent = hullTemp.toLocaleString() + ' K';
+  document.getElementById('shield').textContent    = shield + '%';
+  document.getElementById('vector').textContent    = (0.004 + p * 1.12).toFixed(3) + '\u00b0';
+  document.getElementById('rad-flux').textContent  = flux >= 1000 ? Math.round(flux).toLocaleString() + ' kW/m\u00b2' : flux.toFixed(2) + ' kW/m\u00b2';
+  document.getElementById('sol-wind').textContent  = windSpd.toLocaleString() + ' km/s';
+  document.getElementById('phase').textContent     = p < 0.25 ? 'TRANSIT' : p < 0.5 ? 'APPROACH' : p < 0.75 ? 'TERMINAL' : 'FINAL';
+
+  document.getElementById('dist-bar').style.width   = Math.max(0, (1 - easeIn(p, 1.8)) * 100) + '%';
+  document.getElementById('temp-bar').style.width   = Math.min(100, easeIn(p, 2.2) * 100) + '%';
+  document.getElementById('shield-bar').style.width = shield + '%';
+  document.getElementById('flux-bar').style.width   = Math.min(100, easeIn(p, 2) * 100) + '%';
+  document.getElementById('wind-bar').style.width   = Math.min(100, easeIn(p, 1.6) * 100) + '%';
+}
+
+// Welcome popup: closing it stops the video and starts the countdown
+function closeWelcome() {
+  const overlay = document.getElementById('welcome-overlay');
+  if (overlay.classList.contains('hidden')) return;
+  overlay.classList.add('hidden');
+  document.getElementById('welcome-video').src = '';   // stops playback
+  if (!running && remaining === TOTAL) toggle();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeWelcome(); });
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('sun-canvas');
+const ctx    = canvas.getContext('2d');
+let stars = [], starT = 0;
+
+function resize() {
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  stars = [];
+  for (let i = 0; i < 200; i++) stars.push({ x:Math.random(), y:Math.random(), r:Math.random()*1.4+0.2, speed:Math.random()*0.01+0.003, phase:Math.random()*Math.PI*2 });
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Solar feature data (generated once) ──────────────────────────────────────
+function rng(seed) { let x = Math.sin(seed + 1) * 43758.5453; return x - Math.floor(x); }
+
+// Granulation cells — two populations (bright centres + dark lanes)
+const GRANULES = [];
+for (let i = 0; i < 340; i++) {
+  GRANULES.push({
+    theta:  rng(i*7  +1) * Math.PI * 2,
+    phi:    Math.sqrt(rng(i*13 +2)),      // sqrt bias = uniform disc distribution
+    r:      rng(i*17 +3) * 0.055 + 0.018,
+    bright: rng(i*23 +4),                 // >0.55 = bright granule, else dark lane
+    speed:  (rng(i*31 +5) - 0.5) * 0.0015,
+  });
+}
+
+// Sunspots
+const SUNSPOTS = [];
+for (let i = 0; i < 4; i++) {
+  SUNSPOTS.push({
+    theta: rng(i*97 +7) * Math.PI * 2,
+    phi:   rng(i*83 +11) * 0.7,
+    r:     rng(i*71 +13) * 0.055 + 0.03,
+    drift: (rng(i*61 +17) - 0.5) * 0.00025,
+  });
+}
+
+// Corona streamers
+const CORONA_STREAMS = [];
+for (let i = 0; i < 28; i++) {
+  CORONA_STREAMS.push({
+    angle:  (i / 28) * Math.PI * 2 + Math.sin(i * 2.3) * 0.25,
+    len:    rng(i*19 +3) * 0.7 + 0.3,
+    w:      rng(i*23 +7) * 0.6 + 0.2,
+    bright: rng(i*31 +11) * 0.35 + 0.15,
+  });
+}
+
+// Prominences (plasma loops)
+const PROMINENCES = [];
+for (let i = 0; i < 6; i++) {
+  PROMINENCES.push({
+    angle:  rng(i*137+1) * Math.PI * 2,
+    height: rng(i*113+3) * 0.30 + 0.08,
+    width:  rng(i*101+5) * 0.14 + 0.06,
+    speed:  (rng(i*89 +7) + 0.2) * 0.0006,
+  });
+}
+
+function drawFrame() {
+  const W = canvas.width, H = canvas.height;
+  const rawP = progress();
+  const p = easeIn(rawP, 1.3);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Deep space background
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  // sun size: 16px radius at p=0, screen-filling at p=1
+  const minR = 16;
+  const maxR = Math.sqrt(W*W + H*H) / 2 * 1.05 * 0.75;
+  const sunR = minR + (maxR - minR) * Math.pow(p, 1.5);
+  const sunX = W * lerp(0.78, 0.5, Math.pow(p, 0.8));
+  const sunY = H * lerp(0.18, 0.5, Math.pow(p, 0.8));
+
+  const coronaVisible = clamp((p - 0.02) / 0.15, 0, 1);
+
+  // ── 1. OUTER CORONA: diffuse radial glow ──────────────────────────────────
+  if (coronaVisible > 0) {
+    // Soft outer halo
+    for (const l of [
+      {m:5.5, a:0.012}, {m:4.0, a:0.028}, {m:2.8, a:0.055}, {m:2.0, a:0.09}, {m:1.5, a:0.14}
+    ]) {
+      const cr = sunR * l.m;
+      const cg = ctx.createRadialGradient(sunX, sunY, sunR * 0.9, sunX, sunY, cr);
+      cg.addColorStop(0,   `rgba(255,230,180,${l.a * coronaVisible})`);
+      cg.addColorStop(0.3, `rgba(255,160,60,${l.a * 0.6 * coronaVisible})`);
+      cg.addColorStop(1,   'rgba(255,80,0,0)');
+      ctx.fillStyle = cg;
+      ctx.beginPath(); ctx.arc(sunX, sunY, cr, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Corona streamers — radial spokes
+    if (sunR > 20) {
+      ctx.save();
+      ctx.globalAlpha = clamp((sunR - 20) / 80, 0, 1) * 0.18 * coronaVisible;
+      for (let i = 0; i < CORONA_STREAMS.length; i++) {
+        const s = CORONA_STREAMS[i];
+        const ang = s.angle + starT * 0.0003;
+        const innerR = sunR * 1.02;
+        const outerR = sunR * (2.2 + s.len * 1.8);
+        const halfW  = sunR * (0.018 + s.w * 0.022);
+        const perp = ang + Math.PI/2;
+        ctx.beginPath();
+        ctx.moveTo(sunX + Math.cos(ang) * innerR - Math.cos(perp) * halfW * 0.3,
+                   sunY + Math.sin(ang) * innerR - Math.sin(perp) * halfW * 0.3);
+        ctx.lineTo(sunX + Math.cos(ang) * outerR,
+                   sunY + Math.sin(ang) * outerR);
+        ctx.lineTo(sunX + Math.cos(ang) * innerR + Math.cos(perp) * halfW * 0.3,
+                   sunY + Math.sin(ang) * innerR + Math.sin(perp) * halfW * 0.3);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(255,220,160,${s.bright})`;
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // ── 2. CHROMOSPHERE: thin reddish ring just outside disc ──────────────────
+  if (sunR > 8 && coronaVisible > 0) {
+    const chroGrad = ctx.createRadialGradient(sunX, sunY, sunR * 0.97, sunX, sunY, sunR * 1.04);
+    chroGrad.addColorStop(0,   `rgba(255,60,20,${0.55 * coronaVisible})`);
+    chroGrad.addColorStop(0.5, `rgba(220,40,10,${0.25 * coronaVisible})`);
+    chroGrad.addColorStop(1,   'rgba(180,20,0,0)');
+    ctx.fillStyle = chroGrad;
+    ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 1.04, 0, Math.PI*2); ctx.fill();
+  }
+
+  // ── 3. PHOTOSPHERE DISC with limb darkening ───────────────────────────────
+  // Limb darkening: I(r) = I₀·(1 - u(1 - √(1-(r/R)²)))  u≈0.6
+  // Approximate with radial gradient: centre white-yellow → limb orange-red
+  const limbGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR);
+  limbGrad.addColorStop(0,    'rgb(255,253,230)');   // ~6500K white-yellow core
+  limbGrad.addColorStop(0.25, 'rgb(255,245,190)');
+  limbGrad.addColorStop(0.55, 'rgb(255,220,120)');   // mid photosphere
+  limbGrad.addColorStop(0.80, 'rgb(255,170,50)');    // outer photosphere
+  limbGrad.addColorStop(0.93, 'rgb(240,100,20)');    // limb orange
+  limbGrad.addColorStop(1.0,  'rgb(180,40,0)');      // limb darkening edge
+  ctx.fillStyle = limbGrad;
+  ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, Math.PI*2); ctx.fill();
+
+  // ── 4. GRANULATION TEXTURE (visible once sun is large enough) ─────────────
+  if (sunR > 40) {
+    const granAlpha = clamp((sunR - 40) / 120, 0, 1) * 0.28;
+    ctx.save();
+    ctx.globalAlpha = granAlpha;
+    ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 0.99, 0, Math.PI*2); ctx.clip();
+
+    for (let i = 0; i < GRANULES.length; i++) {
+      const g = GRANULES[i];
+      // Granules drift very slowly
+      const ang  = g.theta + starT * g.speed;
+      const dist = g.phi * sunR * 0.92;
+      const gx   = sunX + Math.cos(ang) * dist;
+      const gy   = sunY + Math.sin(ang) * dist;
+      const gr   = g.r * sunR;
+      const gg   = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+      if (g.bright > 0.55) {
+        // Bright granule centre (hot rising plasma)
+        gg.addColorStop(0, `rgba(255,235,160,${g.bright * 0.7})`);
+        gg.addColorStop(0.6, `rgba(255,180,60,${g.bright * 0.3})`);
+        gg.addColorStop(1, 'rgba(180,60,0,0)');
+      } else {
+        // Dark intergranular lane (cool descending plasma)
+        gg.addColorStop(0, `rgba(120,30,0,${(1-g.bright) * 0.5})`);
+        gg.addColorStop(1, 'rgba(120,30,0,0)');
+      }
+      ctx.fillStyle = gg;
+      ctx.beginPath(); ctx.arc(gx, gy, gr, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ── 6. STARS (fade as sun brightens) ────────────────────────────────────
+  const sa = clamp(1 - p * 3, 0, 1);
+  starT += 0.018;
+  if (sa > 0) {
+    stars.forEach(s => {
+      const a = sa * (0.2 + 0.6 * Math.abs(Math.sin(s.phase + starT * s.speed * 8)));
+      ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(220,215,255,${a.toFixed(2)})`; ctx.fill();
+    });
+  }
+
+  // ── 8. HEAT VIGNETTE ─────────────────────────────────────────────────────
+  if (p > 0.55) {
+    const ha = clamp((p - 0.55) / 0.45 * 0.4, 0, 0.4);
+    const hg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W,H)*0.75);
+    hg.addColorStop(0, 'rgba(255,120,0,0)');
+    hg.addColorStop(1, `rgba(255,40,0,${ha})`);
+    ctx.fillStyle = hg; ctx.fillRect(0, 0, W, H);
+  }
+
+  requestAnimationFrame(drawFrame);
+}
+
+drawFrame();
+renderState();
+</script>
+</body>
+</html>
