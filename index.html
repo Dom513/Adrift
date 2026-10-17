@@ -248,16 +248,16 @@ button:active { transform: scale(0.97); }
   font-family: 'Orbitron', sans-serif; font-size: clamp(16px, 3.6vw, 22px);
   font-weight: 700; letter-spacing: 0.18em; color: var(--bright);
 }
-.welcome-box p { font-size: 13px; line-height: 1.7; letter-spacing: 0.04em; color: var(--text); max-width: 62ch; margin: 0 auto; }
+.welcome-box p { font-size: 13px; line-height: 1.7; letter-spacing: 0.04em; color: var(--text); width: 100%; }
 .video-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--border); background: #000; }
 .video-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 #welcome-x {
   position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; padding: 0;
   font-size: 18px; line-height: 1; letter-spacing: 0; clip-path: none; border: 1px solid var(--border);
 }
-.video-fallback { font-size: 11px; letter-spacing: 0.12em; color: var(--muted); text-decoration: underline; }
-.video-fallback:hover { color: var(--bright); }
 #welcome-go { align-self: center; border-color: rgba(74,158,255,0.55); color: var(--bright); box-shadow: 0 0 18px rgba(74,158,255,0.12); }
+/* Background audio player (kept invisible; audio only) */
+#yt-audio { position: fixed; left: 0; bottom: 0; width: 200px; height: 200px; opacity: 0.001; pointer-events: none; z-index: -1; }
 </style>
 </head>
 <body>
@@ -279,7 +279,7 @@ button:active { transform: scale(0.97); }
     <div class="corner corner-tr"></div>
     <div class="top-left">
       <div class="label-tiny">Vessel ID</div>
-      <div class="value-small">HSV-ARIES-07</div>
+      <div class="value-small">DOMINUS-07</div>
     </div>
     <div class="top-title">Impact Vector // Solar Approach</div>
     <div class="top-right">
@@ -359,11 +359,13 @@ button:active { transform: scale(0.97); }
   </div>
 </div>
 
+<div id="yt-audio"></div>
+
 <div id="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
   <div class="welcome-box">
     <button id="welcome-x" onclick="closeWelcome()" aria-label="Close briefing">&times;</button>
-    <h2 id="welcome-title">Welcome aboard, crew of HSV-ARIES-07</h2>
-    <p>Your vessel is on a direct course for the sun. You have sixty minutes to solve every puzzle and escape before impact. Watch the briefing below, then close this window to start the countdown.</p>
+    <h2 id="welcome-title">Welcome aboard, crew of the DOMINUS-07</h2>
+    <p>This vessel is on a direct course for the sun. You have sixty minutes to gain access to the ship's logs which contain the command to return to Earth. Most of them have been corrupted but I was able to salvage this one. Good luck crewmembers.<br>Capt. S Cape</p>
     <div class="video-wrap">
       <iframe id="welcome-video"
         src="https://www.youtube.com/embed/F_f-TMJ29w8?rel=0&modestbranding=1"
@@ -372,7 +374,6 @@ button:active { transform: scale(0.97); }
         referrerpolicy="strict-origin-when-cross-origin"
         allowfullscreen></iframe>
     </div>
-    <a class="video-fallback" href="https://youtu.be/F_f-TMJ29w8" target="_blank" rel="noopener">Video not loading? Watch it on YouTube</a>
     <button id="welcome-go" onclick="closeWelcome()">Start countdown</button>
   </div>
 </div>
@@ -420,7 +421,11 @@ document.getElementById('scrubber').addEventListener('input', function() {
 });
 
 function scrubTo(val) {
+  const prev = remaining;
+  audioPause();
   remaining = Math.max(0, Math.min(TOTAL, val));
+  if (remaining === 0 && prev !== 0) playImpactSound();
+  else if (remaining > 0) stopImpactSound();
   document.getElementById('scrubber').value = remaining;
   document.getElementById('scrubber-time').textContent = fmt(remaining);
   renderState();
@@ -454,9 +459,11 @@ function toggle() {
     btnStart.textContent = 'Pause';
     sublabel.textContent = 'Impact trajectory locked';
     iv = setInterval(tick, 1000);
+    audioPlay();
   } else {
     btnStart.textContent = 'Resume';
     sublabel.textContent = 'Trajectory hold';
+    audioPause();
     clearInterval(iv); iv = null;
   }
 }
@@ -472,6 +479,7 @@ const MILESTONES = {
 
 function tick() {
   remaining--;
+  if (remaining > 0 && remaining % 5 === 0) audioDriftCheck();
   document.getElementById('scrubber').value = remaining;
   document.getElementById('scrubber-time').textContent = fmt(remaining);
   if (MILESTONES[remaining]) msg.textContent = MILESTONES[remaining];
@@ -480,11 +488,15 @@ function tick() {
     btnStart.textContent = 'Initiate';
     sublabel.textContent = 'Impact event';
     msg.textContent = 'T-ZERO  //  SOLAR IMPACT CONFIRMED';
+    audioPause();
+    playImpactSound();
   }
   renderState();
 }
 
 function reset() {
+  stopImpactSound();
+  audioPause();
   clearInterval(iv); iv = null; running = false; remaining = TOTAL;
   btnStart.textContent = 'Initiate';
   sublabel.textContent = 'Awaiting launch command';
@@ -545,6 +557,106 @@ function renderState() {
   document.getElementById('shield-bar').style.width = shield + '%';
   document.getElementById('flux-bar').style.width   = Math.min(100, easeIn(p, 2) * 100) + '%';
   document.getElementById('wind-bar').style.width   = Math.min(100, easeIn(p, 1.6) * 100) + '%';
+}
+
+// ── Background audio: YouTube track synced to the countdown ───────────────────
+const AUDIO_VIDEO_ID = '6eT-UUSeBQI';   // exactly one hour long
+let ytPlayer = null, ytReady = false, ytWanted = false;
+
+function elapsed() { return TOTAL - remaining; }
+
+function onYouTubeIframeAPIReady() {
+  ytPlayer = new YT.Player('yt-audio', {
+    width: 200, height: 200, videoId: AUDIO_VIDEO_ID,
+    playerVars: { controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1, modestbranding: 1 },
+    events: { onReady: () => { ytReady = true; if (ytWanted) audioPlay(); } }
+  });
+}
+(function loadYT() {
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+})();
+
+function audioPlay() {
+  ytWanted = true;
+  if (!ytReady) return;                       // starts as soon as the player is ready
+  ytPlayer.seekTo(elapsed(), true);
+  ytPlayer.playVideo();
+}
+function audioPause() {
+  ytWanted = false;
+  if (ytReady) ytPlayer.pauseVideo();
+}
+// Called every few seconds while running: keep audio within ~1.5s of the timer
+function audioDriftCheck() {
+  if (!ytReady || !ytWanted) return;
+  const state = ytPlayer.getPlayerState();    // 1 playing, 3 buffering
+  if (state !== 1 && state !== 3) { ytPlayer.seekTo(elapsed(), true); ytPlayer.playVideo(); return; }
+  if (state === 1 && Math.abs(ytPlayer.getCurrentTime() - elapsed()) > 1.5) ytPlayer.seekTo(elapsed(), true);
+}
+
+// ── Impact sound (synthesised, no audio files needed) ────────────────────────
+let audioCtx = null, impactMaster = null;
+function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) {}
+}
+document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('keydown', unlockAudio);
+
+function stopImpactSound() {
+  if (!impactMaster || !audioCtx) return;
+  const m = impactMaster; impactMaster = null;
+  try { m.gain.cancelScheduledValues(0); m.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05); } catch (e) {}
+  setTimeout(() => { try { m.disconnect(); } catch (e) {} }, 500);
+}
+
+function playImpactSound() {
+  unlockAudio();
+  if (!audioCtx) return;
+  stopImpactSound();
+  const ac = audioCtx, t = ac.currentTime;
+  const master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+  impactMaster = master;
+
+  // Explosion: filtered noise burst
+  const len = ac.sampleRate * 3;
+  const buf = ac.createBuffer(1, len, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource(); noise.buffer = buf;
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(5000, t);
+  lp.frequency.exponentialRampToValueAtTime(100, t + 2.5);
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(1, t);
+  ng.gain.exponentialRampToValueAtTime(0.001, t + 3);
+  noise.connect(lp); lp.connect(ng); ng.connect(master);
+  noise.start(t); noise.stop(t + 3);
+
+  // Explosion: sub-bass thump
+  const sub = ac.createOscillator(); sub.type = 'sine';
+  sub.frequency.setValueAtTime(130, t);
+  sub.frequency.exponentialRampToValueAtTime(28, t + 1.2);
+  const sg = ac.createGain();
+  sg.gain.setValueAtTime(1, t);
+  sg.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
+  sub.connect(sg); sg.connect(master);
+  sub.start(t); sub.stop(t + 1.6);
+
+  // Alarm: two-tone siren starting just after the blast
+  const a0 = t + 0.5, alarmLen = 6;
+  const siren = ac.createOscillator(); siren.type = 'square';
+  for (let i = 0; i < alarmLen / 0.4; i++) siren.frequency.setValueAtTime(i % 2 ? 660 : 880, a0 + i * 0.4);
+  const alp = ac.createBiquadFilter(); alp.type = 'lowpass'; alp.frequency.value = 2500;
+  const ag = ac.createGain();
+  ag.gain.setValueAtTime(0.14, a0);
+  ag.gain.linearRampToValueAtTime(0, a0 + alarmLen);
+  siren.connect(alp); alp.connect(ag); ag.connect(master);
+  siren.start(a0); siren.stop(a0 + alarmLen + 0.1);
 }
 
 // Welcome popup: closing it stops the video and starts the countdown
